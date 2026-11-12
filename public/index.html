@@ -152,6 +152,7 @@ input[type="number"] { width: 64px; }
 const API = "/api/todos";
 const KEY = "todo-app-v1";              // this device's cached copy
 const PENDING_KEY = "todo-app-pending"; // set while a change has not reached the server
+const PICK_KEY = "todo-app-pick-count"; // the "Pick random" number, remembered on this device
 const $ = (s) => document.querySelector(s);
 
 let tasks = [];
@@ -486,6 +487,14 @@ $("#add-form").addEventListener("submit", (e) => {
 });
 $("#pick").addEventListener("click", pickRandom);
 $("#clear-pick").addEventListener("click", clearPick);
+
+try {
+  const saved = localStorage.getItem(PICK_KEY);
+  if (saved) $("#pick-count").value = saved;
+} catch (e) {}
+$("#pick-count").addEventListener("input", (e) => {
+  try { localStorage.setItem(PICK_KEY, e.target.value); } catch (err) {}
+});
 
 init();
 $("#new").focus();
