@@ -1,4 +1,4 @@
-name = "todos"
+name = "todo-cloudflare"
 main = "src/index.js"
 compatibility_date = "2024-09-23"
 
@@ -11,6 +11,5 @@ run_worker_first = ["/api/*"]
 # in the Cloudflare dashboard (Storage & Databases → KV → todos).
 [[kv_namespaces]]
 binding = "TODOS"
-id = "a2bf1750d3de4f2c924ca15a15e70c35"
+id = "YOUR_KV_NAMESPACE_ID"
 
-# Do NOT put TODO_TOKEN here. Keep it as a Secret in the project's settings.
