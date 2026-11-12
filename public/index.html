@@ -159,6 +159,7 @@ let tasks = [];
 let picked = new Set();
 let editingId = null;
 let writeChain = Promise.resolve();
+let loaded = false; // true once the server copy has been checked
 
 function loadLocal() {
   try {
@@ -175,13 +176,18 @@ function setSync(text) {
 async function remoteLoad() {
   const res = await fetch(API);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()).tasks;
+  return await res.json(); // { tasks, pickCount }
 }
+function currentPickCount() {
+  const n = parseInt($("#pick-count").value, 10);
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, 999) : 1;
+}
+
 async function remoteSave(json) {
   const res = await fetch(API, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: `{"tasks":${json}}`,
+    body: `{"tasks":${json},"pickCount":${currentPickCount()}}`,
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
@@ -215,18 +221,23 @@ async function init() {
     const remote = await remoteLoad();
     let pending = false;
     try { pending = !!localStorage.getItem(PENDING_KEY); } catch (e) {}
-    if (pending || (!remote.length && tasks.length)) {
+    if (pending || (!remote.tasks.length && tasks.length)) {
       // This device has changes the server has not seen yet: send them up.
       await remoteSave(JSON.stringify(tasks));
       try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
     } else {
-      tasks = remote;
+      tasks = remote.tasks;
       try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch (e) {}
+    }
+    if (typeof remote.pickCount === "number") {
+      $("#pick-count").value = remote.pickCount;
+      try { localStorage.setItem(PICK_KEY, String(remote.pickCount)); } catch (e) {}
     }
     setSync("Saved");
   } catch (e) {
     setSync("Server unreachable. Showing this device's copy.");
   }
+  loaded = true;
   render();
 }
 
@@ -494,6 +505,9 @@ try {
 } catch (e) {}
 $("#pick-count").addEventListener("input", (e) => {
   try { localStorage.setItem(PICK_KEY, e.target.value); } catch (err) {}
+});
+$("#pick-count").addEventListener("change", () => {
+  if (loaded) save();
 });
 
 init();
