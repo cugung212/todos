@@ -21,6 +21,7 @@ function validTasks(list) {
         typeof t.id === "string" && t.id.length <= 64 &&
         typeof t.text === "string" && t.text.length <= 500 &&
         typeof t.done === "boolean" &&
+        (t.priority === undefined || typeof t.priority === "boolean") &&
         (t.doneAt === null || typeof t.doneAt === "number")
     )
   );
