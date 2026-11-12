@@ -20,8 +20,11 @@ function safeEqual(a, b) {
   return diff === 0;
 }
 
+function tokenConfigured(env) {
+  return typeof env.TODO_TOKEN === "string" && env.TODO_TOKEN.length >= 16;
+}
+
 function authorized(request, env) {
-  if (!env.TODO_TOKEN || env.TODO_TOKEN.length < 16) return false;
   const header = request.headers.get("Authorization") || "";
   return safeEqual(header, `Bearer ${env.TODO_TOKEN}`);
 }
@@ -45,6 +48,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname !== "/api/todos") return new Response("Not found", { status: 404 });
+    if (!tokenConfigured(env)) return json({ error: "server token not configured" }, 500);
     if (!authorized(request, env)) return json({ error: "unauthorized" }, 401);
 
     if (request.method === "GET") {
