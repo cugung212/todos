@@ -27,6 +27,10 @@ function validTasks(list) {
   );
 }
 
+function validPickCount(n) {
+  return Number.isInteger(n) && n >= 1 && n <= 999;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -34,7 +38,11 @@ export default {
 
     if (request.method === "GET") {
       const raw = await env.TODOS.get("list");
-      return json({ tasks: raw ? JSON.parse(raw) : [] });
+      const pick = await env.TODOS.get("pickCount");
+      return json({
+        tasks: raw ? JSON.parse(raw) : [],
+        pickCount: pick ? Number(pick) : null,
+      });
     }
 
     if (request.method === "PUT") {
@@ -48,8 +56,14 @@ export default {
         return json({ error: "invalid json" }, 400);
       }
       if (!validTasks(body && body.tasks)) return json({ error: "invalid list" }, 400);
+      if (body.pickCount !== undefined && !validPickCount(body.pickCount)) {
+        return json({ error: "invalid pick count" }, 400);
+      }
 
       await env.TODOS.put("list", JSON.stringify(body.tasks));
+      if (body.pickCount !== undefined) {
+        await env.TODOS.put("pickCount", String(body.pickCount));
+      }
       return json({ ok: true });
     }
 
