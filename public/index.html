@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="To do">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -33,6 +33,7 @@
     --danger: #f97066;
   }
 }
+html, body { touch-action: manipulation; } /* no double-tap zoom */
 * { box-sizing: border-box; }
 body {
   margin: 0;
@@ -509,6 +510,10 @@ $("#pick-count").addEventListener("input", (e) => {
 $("#pick-count").addEventListener("change", () => {
   if (loaded) save();
 });
+
+// iPhone Safari pinch-zoom gestures
+["gesturestart", "gesturechange", "gestureend"].forEach((type) =>
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false }));
 
 init();
 $("#new").focus();
