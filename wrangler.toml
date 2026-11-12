@@ -1,4 +1,4 @@
-name = "todo-cloudflare"
+name = "todos"
 main = "src/index.js"
 compatibility_date = "2024-09-23"
 
@@ -11,5 +11,5 @@ run_worker_first = ["/api/*"]
 # in the Cloudflare dashboard (Storage & Databases → KV → todos).
 [[kv_namespaces]]
 binding = "TODOS"
-id = "YOUR_KV_NAMESPACE_ID"
+id = "a2bf1750d3de4f2c924ca15a15e70c35"
 
