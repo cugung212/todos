@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="To do">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>To do</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>✅</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -129,9 +132,8 @@ input[type="number"] { width: 64px; }
 
 <script>
 const API = "/api/todos";
-const KEY = "todo-app-v1";           // this browser's cached copy
+const KEY = "todo-app-v1";              // this device's cached copy
 const PENDING_KEY = "todo-app-pending"; // set while a change has not reached the server
-const TOKEN_KEY = "todo-app-token";
 const $ = (s) => document.querySelector(s);
 
 let tasks = [];
@@ -151,40 +153,18 @@ function setSync(text) {
   $("#sync").textContent = text;
 }
 
-function token() {
-  let t = localStorage.getItem(TOKEN_KEY);
-  if (!t) {
-    t = (prompt("Enter your to-do access token:") || "").trim();
-    if (t) localStorage.setItem(TOKEN_KEY, t);
-  }
-  return t;
-}
-function forgetToken() {
-  localStorage.removeItem(TOKEN_KEY);
-}
-
 async function remoteLoad() {
-  const res = await fetch(API, { headers: { Authorization: `Bearer ${token()}` } });
-  if (res.status === 401) { forgetToken(); throw new Error("auth"); }
-  if (res.status === 500) throw new Error("config");
+  const res = await fetch(API);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.json()).tasks;
 }
 async function remoteSave(json) {
   const res = await fetch(API, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token()}` },
+    headers: { "Content-Type": "application/json" },
     body: `{"tasks":${json}}`,
   });
-  if (res.status === 401) { forgetToken(); throw new Error("auth"); }
-  if (res.status === 500) throw new Error("config");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-}
-
-function errorText(e) {
-  if (e.message === "auth") return "Wrong access token. Reload and enter the token again.";
-  if (e.message === "config") return "Server setup problem: TODO_TOKEN is missing or shorter than 16 characters.";
-  return null;
 }
 
 function save() {
@@ -199,11 +179,13 @@ function save() {
   writeChain = writeChain.then(async () => {
     const snapshot = JSON.stringify(tasks);
     await remoteSave(snapshot);
-    if (JSON.stringify(tasks) === snapshot) localStorage.removeItem(PENDING_KEY);
+    if (JSON.stringify(tasks) === snapshot) {
+      try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
+    }
     setSync("Saved");
   }).catch((e) => {
     console.warn(e);
-    setSync(errorText(e) || "Not saved to server yet. It will retry on your next visit.");
+    setSync("Not saved to server yet. It will retry on your next visit.");
   });
 }
 
@@ -212,17 +194,19 @@ async function init() {
   render();
   try {
     const remote = await remoteLoad();
-    if (localStorage.getItem(PENDING_KEY) || (!remote.length && tasks.length)) {
+    let pending = false;
+    try { pending = !!localStorage.getItem(PENDING_KEY); } catch (e) {}
+    if (pending || (!remote.length && tasks.length)) {
       // This device has changes the server has not seen yet: send them up.
       await remoteSave(JSON.stringify(tasks));
-      localStorage.removeItem(PENDING_KEY);
+      try { localStorage.removeItem(PENDING_KEY); } catch (e) {}
     } else {
       tasks = remote;
-      localStorage.setItem(KEY, JSON.stringify(tasks));
+      try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch (e) {}
     }
     setSync("Saved");
   } catch (e) {
-    setSync(errorText(e) || "Server unreachable. Showing this device's copy.");
+    setSync("Server unreachable. Showing this device's copy.");
   }
   render();
 }
