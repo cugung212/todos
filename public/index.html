@@ -63,6 +63,8 @@ button {
 }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 500; }
 button:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.4; cursor: default; }
+button:disabled:hover { border-color: var(--line); }
 input[type="text"], input[type="number"], .edit {
   border: 1px solid var(--line);
   background: var(--card);
@@ -138,6 +140,8 @@ input[type="number"] { width: 64px; }
 
   <div class="toolbar">
     <input id="pick-count" type="number" min="1" value="1" aria-label="How many to pick">
+    <button id="undo" type="button" title="Undo (Ctrl/⌘+Z)" disabled>Undo</button>
+    <button id="redo" type="button" title="Redo (Ctrl/⌘+Shift+Z)" disabled>Redo</button>
     <button id="pick" type="button">Pick random</button>
     <button id="clear-pick" type="button" hidden>Clear pick</button>
     <span id="status" role="status" aria-live="polite"></span>
@@ -161,6 +165,35 @@ let picked = new Set();
 let editingId = null;
 let writeChain = Promise.resolve();
 let loaded = false; // true once the server copy has been checked
+
+// Undo/redo keeps snapshots of the open and done lists. Pick count is not included.
+const HISTORY_LIMIT = 100;
+let undoStack = [];
+let redoStack = [];
+
+function checkpoint() {
+  undoStack.push(JSON.stringify(tasks));
+  if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+  redoStack = [];
+}
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(JSON.stringify(tasks));
+  tasks = JSON.parse(undoStack.pop());
+  afterHistoryChange();
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(JSON.stringify(tasks));
+  tasks = JSON.parse(redoStack.pop());
+  afterHistoryChange();
+}
+function afterHistoryChange() {
+  editingId = null;
+  picked = new Set([...picked].filter((id) => tasks.some((t) => t.id === id && !t.done)));
+  save();
+  render();
+}
 
 function loadLocal() {
   try {
@@ -245,6 +278,7 @@ async function init() {
 function add(text) {
   text = text.trim();
   if (!text) return;
+  checkpoint();
   tasks.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), text, done: false, doneAt: null, priority: false });
   save();
   render();
@@ -255,6 +289,7 @@ function find(id) {
 function toggle(id) {
   const t = find(id);
   if (!t) return;
+  checkpoint();
   t.done = !t.done;
   t.doneAt = t.done ? Date.now() : null;
   if (t.done) picked.delete(id);
@@ -264,13 +299,15 @@ function toggle(id) {
 function rename(id, text) {
   const t = find(id);
   text = text.trim();
-  if (t && text) {
+  if (t && text && text !== t.text) {
+    checkpoint();
     t.text = text;
     save();
   }
   render();
 }
 function remove(id) {
+  checkpoint();
   tasks = tasks.filter((t) => t.id !== id);
   picked.delete(id);
   save();
@@ -399,6 +436,7 @@ function endDrag(e, apply) {
 
   const at = d.lo + d.k;
   if (at === d.fromIndex) return; // dropped where it started
+  checkpoint();
 
   const list = visiblePending();
   const item = list.find((x) => x.id === d.id);
@@ -412,6 +450,7 @@ function endDrag(e, apply) {
 function togglePriority(id) {
   const t = find(id);
   if (!t) return;
+  checkpoint();
   t.priority = !t.priority;
   save();
   render();
@@ -488,6 +527,8 @@ function render() {
 
   $("#count").textContent = `${pending.length} open, ${done.length} done`;
   $("#clear-pick").hidden = picked.size === 0;
+  $("#undo").disabled = !undoStack.length;
+  $("#redo").disabled = !redoStack.length;
 }
 
 $("#add-form").addEventListener("submit", (e) => {
@@ -498,6 +539,15 @@ $("#add-form").addEventListener("submit", (e) => {
   input.focus();
 });
 $("#pick").addEventListener("click", pickRandom);
+$("#undo").addEventListener("click", undo);
+$("#redo").addEventListener("click", redo);
+document.addEventListener("keydown", (e) => {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+  if (e.target.matches && e.target.matches('input[type="text"], input[type="number"]')) return; // native text undo
+  const k = e.key.toLowerCase();
+  if (k === "z") { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
+  else if (k === "y") { e.preventDefault(); redo(); }
+});
 $("#clear-pick").addEventListener("click", clearPick);
 
 try {
