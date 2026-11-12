@@ -105,6 +105,24 @@ input[type="number"] { width: 64px; }
 }
 .del:hover { color: var(--danger); border: none; }
 .empty { color: var(--muted); padding: 20px 4px; border-bottom: 1px solid var(--line); }
+.item.priority .text { font-weight: 600; }
+.star {
+  border: none; background: none; color: var(--muted);
+  padding: 2px 4px; font-size: 1.2rem; line-height: 1; flex: none;
+}
+.star[aria-pressed="true"] { color: #d99a00; }
+.handle {
+  flex: none; padding: 4px 2px; font-size: 1.1rem; line-height: 1;
+  color: var(--muted); cursor: grab;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.item.dragging {
+  position: relative; z-index: 2; background: var(--card);
+  border-radius: 10px; border-bottom-color: transparent;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+.item.drop-above { box-shadow: inset 0 2px 0 var(--accent); }
+.item.drop-below { box-shadow: inset 0 -2px 0 var(--accent); }
 </style>
 </head>
 <body>
@@ -214,7 +232,7 @@ async function init() {
 function add(text) {
   text = text.trim();
   if (!text) return;
-  tasks.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), text, done: false, doneAt: null });
+  tasks.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7), text, done: false, doneAt: null, priority: false });
   save();
   render();
 }
@@ -279,11 +297,134 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+// Open items: priority first, then manual order. The saved list keeps this order.
+function visiblePending() {
+  return tasks
+    .filter((t) => !t.done)
+    .sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0));
+}
+
+// Write the open items back into the saved list, in the given order.
+// Done items keep their places.
+function writePendingOrder(list) {
+  const slots = [];
+  tasks.forEach((t, i) => { if (!t.done) slots.push(i); });
+  slots.forEach((slot, k) => { tasks[slot] = list[k]; });
+}
+
+// Drag and drop. Works with mouse and touch. The row follows the finger, a line
+// shows where it will land, and the new order is saved on release. Drags stay
+// inside the same priority group.
+let drag = null;
+
+function handle(t) {
+  return el("span", {
+    class: "handle", title: "Drag to reorder", "aria-label": "Drag to reorder",
+    onpointerdown: startDrag,
+    onpointermove: moveDrag,
+    onpointerup: (e) => endDrag(e, true),
+    onpointercancel: (e) => endDrag(e, false),
+  }, "⠿");
+}
+
+function startDrag(e) {
+  const handleEl = e.currentTarget;
+  const li = handleEl.closest("li");
+  const id = li.dataset.id;
+  const pending = visiblePending();
+  const fromIndex = pending.findIndex((x) => x.id === id);
+  if (fromIndex < 0) return;
+  const me = pending[fromIndex];
+
+  let lo = fromIndex;
+  let hi = fromIndex;
+  while (lo > 0 && !!pending[lo - 1].priority === !!me.priority) lo--;
+  while (hi < pending.length - 1 && !!pending[hi + 1].priority === !!me.priority) hi++;
+
+  const groupIds = new Set(pending.slice(lo, hi + 1).map((x) => x.id));
+  const others = [...$("#list").querySelectorAll("li[data-id]")]
+    .filter((r) => r.dataset.id !== id && groupIds.has(r.dataset.id));
+
+  const rect = li.getBoundingClientRect();
+  drag = {
+    id, li, pointerId: e.pointerId, startY: e.clientY,
+    centerY: rect.top + rect.height / 2, lo, fromIndex, others, k: null,
+  };
+  handleEl.setPointerCapture(e.pointerId);
+  li.classList.add("dragging");
+  e.preventDefault();
+}
+
+function moveDrag(e) {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  const dy = e.clientY - drag.startY;
+  drag.li.style.transform = `translateY(${dy}px)`;
+
+  const y = drag.centerY + dy;
+  let k = 0; // how many other rows in the group sit above the dragged row
+  drag.others.forEach((r) => {
+    const b = r.getBoundingClientRect();
+    if (b.top + b.height / 2 < y) k++;
+  });
+  drag.k = k;
+
+  drag.others.forEach((r) => r.classList.remove("drop-above", "drop-below"));
+  if (drag.others.length) {
+    if (k < drag.others.length) drag.others[k].classList.add("drop-above");
+    else drag.others[drag.others.length - 1].classList.add("drop-below");
+  }
+}
+
+function endDrag(e, apply) {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  const d = drag;
+  drag = null;
+  d.li.style.transform = "";
+  d.li.classList.remove("dragging");
+  d.others.forEach((r) => r.classList.remove("drop-above", "drop-below"));
+  if (!apply || d.k === null) return;
+
+  const at = d.lo + d.k;
+  if (at === d.fromIndex) return; // dropped where it started
+
+  const list = visiblePending();
+  const item = list.find((x) => x.id === d.id);
+  const rest = list.filter((x) => x.id !== d.id);
+  rest.splice(at, 0, item);
+  writePendingOrder(rest);
+  save();
+  render();
+}
+
+function togglePriority(id) {
+  const t = find(id);
+  if (!t) return;
+  t.priority = !t.priority;
+  save();
+  render();
+}
+
 function row(t) {
-  const cls = "item" + (t.done ? " done" : "") + (picked.has(t.id) ? " picked" : "");
+  const classes = ["item"];
+  if (t.done) classes.push("done");
+  if (!t.done && t.priority) classes.push("priority");
+  if (picked.has(t.id)) classes.push("picked");
+
   const cb = el("input", { type: "checkbox", "aria-label": "Mark as done", onchange: () => toggle(t.id) });
   cb.checked = t.done;
-  const del = el("button", { class: "del", type: "button", "aria-label": "Delete to-do", onclick: () => remove(t.id) }, "×");
+  const parts = [];
+  if (!t.done) parts.push(handle(t));
+  parts.push(cb);
+
+  if (!t.done) {
+    parts.push(el("button", {
+      class: "star", type: "button",
+      "aria-pressed": t.priority ? "true" : "false",
+      "aria-label": t.priority ? "Remove priority" : "Set as priority",
+      title: t.priority ? "Remove priority" : "Set as priority",
+      onclick: () => togglePriority(t.id),
+    }, t.priority ? "★" : "☆"));
+  }
 
   if (editingId === t.id) {
     let cancel = false;
@@ -301,19 +442,21 @@ function row(t) {
       },
     });
     setTimeout(() => { input.focus(); input.select(); }, 0);
-    return el("li", { class: cls }, cb, input, del);
+    parts.push(input);
+  } else {
+    parts.push(el("span", {
+      class: "text", tabindex: 0, title: "Click to edit",
+      onclick: () => { editingId = t.id; render(); },
+      onkeydown: (e) => { if (e.key === "Enter") { editingId = t.id; render(); } },
+    }, t.text));
   }
 
-  const label = el("span", {
-    class: "text", tabindex: 0, title: "Click to edit",
-    onclick: () => { editingId = t.id; render(); },
-    onkeydown: (e) => { if (e.key === "Enter") { editingId = t.id; render(); } },
-  }, t.text);
-  return el("li", { class: cls }, cb, label, del);
+  parts.push(el("button", { class: "del", type: "button", "aria-label": "Delete to-do", onclick: () => remove(t.id) }, "×"));
+  return el("li", { class: classes.join(" "), "data-id": t.id }, ...parts);
 }
 
 function render() {
-  const pending = tasks.filter((t) => !t.done);
+  const pending = visiblePending();
   const done = tasks.filter((t) => t.done).sort((a, b) => b.doneAt - a.doneAt);
 
   const list = $("#list");
