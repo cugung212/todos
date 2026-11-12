@@ -154,7 +154,7 @@ function setSync(text) {
 function token() {
   let t = localStorage.getItem(TOKEN_KEY);
   if (!t) {
-    t = prompt("Enter your to-do access token:") || "";
+    t = (prompt("Enter your to-do access token:") || "").trim();
     if (t) localStorage.setItem(TOKEN_KEY, t);
   }
   return t;
@@ -166,6 +166,7 @@ function forgetToken() {
 async function remoteLoad() {
   const res = await fetch(API, { headers: { Authorization: `Bearer ${token()}` } });
   if (res.status === 401) { forgetToken(); throw new Error("auth"); }
+  if (res.status === 500) throw new Error("config");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.json()).tasks;
 }
@@ -176,7 +177,14 @@ async function remoteSave(json) {
     body: `{"tasks":${json}}`,
   });
   if (res.status === 401) { forgetToken(); throw new Error("auth"); }
+  if (res.status === 500) throw new Error("config");
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+function errorText(e) {
+  if (e.message === "auth") return "Wrong access token. Reload and enter the token again.";
+  if (e.message === "config") return "Server setup problem: TODO_TOKEN is missing or shorter than 16 characters.";
+  return null;
 }
 
 function save() {
@@ -195,9 +203,7 @@ function save() {
     setSync("Saved");
   }).catch((e) => {
     console.warn(e);
-    setSync(e.message === "auth"
-      ? "Wrong access token. Reload to enter it again."
-      : "Not saved to server yet. It will retry on your next visit.");
+    setSync(errorText(e) || "Not saved to server yet. It will retry on your next visit.");
   });
 }
 
@@ -216,9 +222,7 @@ async function init() {
     }
     setSync("Saved");
   } catch (e) {
-    setSync(e.message === "auth"
-      ? "Wrong access token. Reload to enter it again."
-      : "Server unreachable. Showing this device's copy.");
+    setSync(errorText(e) || "Server unreachable. Showing this device's copy.");
   }
   render();
 }
