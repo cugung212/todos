@@ -1,0 +1,11 @@
+name = "todos"
+pages_build_output_dir = "public"
+compatibility_date = "2024-09-23"
+
+# Replace YOUR_KV_NAMESPACE_ID with the ID shown on the "todos" KV namespace page
+# in the Cloudflare dashboard (Storage & Databases → KV → todos).
+[[kv_namespaces]]
+binding = "TODOS"
+id = "a2bf1750d3de4f2c924ca15a15e70c35"
+
+# Do NOT put TODO_TOKEN here. Keep it as a Secret in the Pages project settings.
